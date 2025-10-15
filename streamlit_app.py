@@ -26,7 +26,7 @@ df = load_data()
 genres = st.multiselect(
     "no",
     df.genre.unique(),
-    ["no_of_visitors"],
+    ["no_of_visitors","BBB"],
 )
 
 # Show a slider widget with the years using `st.slider`.
