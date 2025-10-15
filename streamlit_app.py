@@ -33,9 +33,9 @@ genres = st.multiselect(
 years = st.slider("Years", 2000, 2024, (2021, 2024))
 
 # Filter the dataframe based on the widget input and reshape it.
-df_filtered = df[(df["genre"].isin(genres)) & (df["year"].between(years[0], years[1]))]
+df_filtered = df[(df["no"].isin(genres)) & (df["year"].between(years[0], years[1]))]
 df_reshaped = df_filtered.pivot_table(
-    index="year", columns="genre", values="gross", aggfunc="sum", fill_value=0
+    index="year", columns="no", values="gross", aggfunc="sum", fill_value=0
 )
 df_reshaped = df_reshaped.sort_values(by="year", ascending=False)
 
@@ -57,7 +57,7 @@ chart = (
     .encode(
         x=alt.X("year:N", title="Year"),
         y=alt.Y("gross:Q", title="Gross earnings ($)"),
-        color="genre:N",
+        color="no:N",
     )
     .properties(height=320)
 )
