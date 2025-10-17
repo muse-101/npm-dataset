@@ -1,3 +1,12 @@
+# -------------------------------------------------------------
+# 💡 嵌入 Hugo Page 說明
+# 可直接用 iframe 嵌入不同 CSV，例如：
+# <iframe src="https://npm-dataset.streamlit.app/?embed=true&csv=d01銅_s1.csv" width="100%" height="900" style="border:0;" loading="lazy"></iframe>
+# 若要簡化，可在 Hugo 新增 shortcode：layouts/shortcodes/streamlit.html
+# 內容：<iframe src="https://npm-dataset.streamlit.app/?embed=true&csv={{ .Get \"csv\" | urlquery }}" width="100%" height="900" style="border:0;" loading="lazy"></iframe>
+# 使用：{{< streamlit csv="d02玉_s1.csv" >}}
+# -------------------------------------------------------------
+
 # === 護眼灰藍主題（柔和灰底＋淺灰藍主色） ===
 import streamlit as st
 st.markdown(
