@@ -1,3 +1,50 @@
+# === 護眼灰藍主題（柔和灰底＋淺灰藍主色） ===
+import streamlit as st
+st.markdown(
+    """
+    <style>
+    body, .stApp {
+        background-color: #F4F5F7 !important;
+        color: #111827 !important;
+    }
+    div[data-testid="stDataFrame"] div[role="gridcell"] {
+        background-color: #FAFBFD !important;
+        color: #111827 !important;
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.75rem !important;
+    }
+    div[data-testid="stDataFrame"] div[role="columnheader"] {
+        background-color: #EEF2F7 !important;
+        color: #111827 !important;
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.75rem !important;
+    }
+    .stTextInput > div > div > input {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
+    }
+    .stSelectbox div[data-baseweb="select"] {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
+    }
+    .stDownloadButton button, .stButton button {
+        background-color: #5A7BD8 !important; /* 改為淺灰藍 */
+        color: white !important;
+        border: none !important;
+    }
+    .stDownloadButton button:hover, .stButton button:hover {
+        background-color: #7395EB !important; /* hover 更亮 */
+        color: white !important;
+    }
+    .stExpander, .stSelectbox, .stTextInput, .stMultiSelect, .stDataFrame {
+        border-radius: 10px !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # streamlit_app.py —— 固定讀同層 CSV、無側欄、支援連結與縮圖、下拉分頁
 import os
 import math
@@ -8,102 +55,52 @@ import streamlit as st
 st.set_page_config(page_title="CSV 典藏資料瀏覽器", layout="wide")
 st.title("CSV 典藏資料瀏覽器")
 
-# 介面：柔和灰主題切換（與表格一致的灰調，降低對比）
-use_gray = st.toggle("柔和灰主題", value=True, help="啟用全站柔和灰，含表格背景，降低白底對比")
+# —— 本機快速切換測試檔（僅保留快速連結）——
+TEST_FILES = [
+    "d01銅_s1.csv", "d02玉_s1.csv", "d03瓷_s1.csv", "d04琺_s1.csv", "d05雜_s1.csv",
+    "d06文_s1.csv", "d07織_s1.csv", "d08雕_s1.csv", "d09漆_s1.csv", "d10錢_s1.csv",
+    "d20畫_s1.csv", "d21書_s1.csv", "d22帖_s1.csv", "d23扇_s1.csv", "d24絲_s1.csv"
+]
+import urllib.parse as _u
 
-LIGHT = {
-    "bg": "#FFFFFF",
-    "bg2": "#F7F8FA",
-    "text": "#1F2937",
-    "primary": "#1E90FF",
-    "chip_bg": "#EAF4FF",
-    "chip_text": "#124C9E",
-    "shadow": "rgba(30,144,255,0.28)",
-    "table_bg": "#FFFFFF",
-    "table_head": "#F3F6FA",
-    "table_border": "#E2E8F0",
-}
-GRAY = {
-    "bg": "#E6E8EC",      # 頁面底色：柔和灰（再深一階）
-    "bg2": "#E1E5EB",     # 區塊/expander：略淺灰（再深一階）
-    "text": "#0F172A",    # 深灰文字（微增對比）
-    "primary": "#1D4ED8", # 主色改為墨藍
-    "chip_bg": "#DAE8FF",
-    "chip_text": "#0B2E73",
-    "shadow": "rgba(37,99,235,0.32)",
-    "table_bg": "#F1F4F8",   # 表格底色再深一階
-    "table_head": "#E6ECF3", # 表頭更深一階
-    "table_border": "#C6D0DC",
-}
-P = GRAY if use_gray else LIGHT
+with st.expander("切換測試檔", expanded=True):
+    # 僅顯示可點連結（已 URL encode）
+    links = "　".join(f"[{name}](?csv={_u.quote(name)})" for name in TEST_FILES)
+    st.markdown("快速連結：" + links, unsafe_allow_html=True)
 
-# 固定主色為「50% 深淺」的藍（介於 #93C5FD 與 #1D4ED8 之間）
-# 計算結果：約 #5889EA
-P['primary'] = '#5889EA'
-P['shadow']  = 'rgba(88,137,234,0.28)'
-P['chip_text'] = '#0B2E73'
-P['chip_bg']   = '#DAE8FF'
-
-# 自訂樣式：Multiselect/標籤、整體背景、表格底色統一灰調
-st.markdown(
-    f"""
-    <style>
-    /* 全域背景與文字 */
-    .stApp {{ background: {P['bg']}; color: {P['text']}; }}
-    .stApp .block-container {{ background: {P['bg']}; }}
-
-    /* 區塊/expander 背景 */
-    details {{ background: {P['bg2']}; border-radius: 10px; padding: .35rem .5rem; border: 1px solid {P['table_border']}; }}
-    details > summary {{ color: {P['text']}; font-weight: 600; }}
-
-    /* DataFrame / DataEditor 表格配色（避免純白）*/
-    .stDataFrame, .stDataEditor {{ background: {P['table_bg']} !important; }}
-    .stDataEditor table, .stDataFrame table {{ background: {P['table_bg']} !important; color: {P['text']} !important; }}
-    .stDataEditor th, .stDataFrame th {{ background: {P['table_head']} !important; color: {P['text']} !important; }}
-    .stDataEditor td, .stDataFrame td {{ background: {P['table_bg']} !important; color: {P['text']} !important; border-color: {P['table_border']} !important; }}
-
-    /* 表格外框/滾動區域 */
-    .stDataEditor div[role="grid"], .stDataFrame div[role="grid"] {{ border: 1px solid {P['table_border']} !important; border-radius: 8px; }}
-
-    /* Multiselect 外框預設、hover、focus 改藍，背景跟著灰 */
-    .stApp div[data-baseweb="select"] > div {{
-      border: 1px solid {P['primary']} !important; box-shadow: none !important;
-      background: {P['bg2']}; color: {P['text']};
-    }}
-    .stApp div[data-baseweb="select"] > div:hover {{ border-color: {P['primary']} !important; }}
-    .stApp div[data-baseweb="select"] > div:focus-within {{
-      border-color: {P['primary']} !important; box-shadow: 0 0 0 2px {P['shadow']} !important;
-    }}
-
-    /* 已選 chips 樣式 */
-    .stApp div[data-baseweb="tag"] {{ background: {P['chip_bg']} !important; color: {P['chip_text']} !important; border: 1px solid {P['primary']} !important; }}
-    .stApp div[data-baseweb="tag"] span {{ color: {P['chip_text']} !important; }}
-
-    /* 按鈕顏色微調（灰主題下依然藍邊） */
-    .stButton>button {{ background: {P['primary']}1A; color: {P['text']}; border: 1px solid {P['primary']}; }}
-    .stButton>button:hover {{ background: {P['primary']}2B; }}
-
-    /* 分隔線 */
-    hr {{ border-color: {P['table_border']} !important; opacity: .8; }}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# === 固定讀同層 CSV（依需求修改檔名） ===
-CSV_NAME = "d01銅_s1.csv"   # ← 將此名稱改為你要讀取的檔名
-# 可選：指定圖片欄位覆蓋（例如你現在的 imageUrl_s）
-IMAGE_COL_OVERRIDE = "imageUrl_s"  # 沒有就設為空字串 ""
+# === 固定讀同層 CSV ===
+CSV_NAME = "d01銅_s1.csv"
+IMAGE_COL_OVERRIDE = "imageUrl_s"
 CSV_PATH = os.path.join(os.path.dirname(__file__), CSV_NAME)
-if not os.path.exists(CSV_PATH):
-    st.error(f"找不到 {CSV_PATH}，請把 CSV 放在與本檔相同的資料夾，或修改 CSV_NAME。")
-    st.stop()
 
 # DuckDB：以 scan 方式讀取，不一次載入全部記憶體
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs;")
-scan = f"read_csv_auto('{CSV_PATH}', SAMPLE_SIZE=200000)"
-source_hint = f"資料來源：{CSV_PATH}"
+
+# — URL 參數：?csv= 支援同層檔名或 http(s) 直連 —
+try:
+    _qp = st.query_params if hasattr(st, "query_params") else st.experimental_get_query_params()
+except Exception:
+    _qp = {}
+_csv_param = _qp.get("csv", "")
+if isinstance(_csv_param, list):
+    _csv_param = _csv_param[0] if _csv_param else ""
+
+if _csv_param:
+    if str(_csv_param).lower().startswith(("http://", "https://")):
+        _is_parquet = str(_csv_param).lower().endswith(".parquet")
+        scan = f"parquet_scan('{_csv_param}')" if _is_parquet else f"read_csv_auto('{_csv_param}', SAMPLE_SIZE=200000)"
+        source_hint = f"資料來源（URL）：{_csv_param}"
+    else:
+        _alt = os.path.join(os.path.dirname(__file__), _csv_param)
+        if not os.path.exists(_alt):
+            st.error(f"找不到指定的 csv 檔：{_alt}")
+            st.stop()
+        scan = f"read_csv_auto('{_alt}', SAMPLE_SIZE=200000)"
+        source_hint = f"資料來源（同層檔案）：{_alt}"
+else:
+    scan = f"read_csv_auto('{CSV_PATH}', SAMPLE_SIZE=200000)"
+    source_hint = f"資料來源：{CSV_PATH}"
 
 # 先抓欄位
 try:
@@ -133,15 +130,9 @@ if keyword and kw_cols:
     params["kw"] = f"%{keyword}%"
 
 # 先算總筆數，再給頁碼下拉
-try:
-    total = con.execute(f"SELECT COUNT(*) FROM {scan} WHERE {where}", params).fetchone()[0]
-except Exception as e:
-    st.error(f"統計總筆數時出錯：{e}")
-    st.stop()
-
+total = con.execute(f"SELECT COUNT(*) FROM {scan} WHERE {where}", params).fetchone()[0]
 total_pages = max(1, math.ceil(total / page_size))
 
-# 以四個按鈕控制頁碼：⏮ 第一頁、◀ 上一頁、下一頁 ▶、最後一頁 ⏭
 if "page" not in st.session_state or st.session_state.page < 1 or st.session_state.page > total_pages:
     st.session_state.page = 1
 
@@ -166,17 +157,13 @@ st.caption(f"第 {page} / {total_pages} 頁")
 offset = (page - 1) * page_size
 select_cols = ", ".join([f'"{c}"' for c in (show_cols or cols)])
 
-try:
-    q = f"""
-        SELECT {select_cols}
-        FROM {scan}
-        WHERE {where}
-        LIMIT {int(page_size)} OFFSET {int(offset)}
-    """
-    df = con.execute(q, params).fetchdf()
-except Exception as e:
-    st.error(f"讀取當頁資料時出錯：{e}")
-    st.stop()
+q = f"""
+    SELECT {select_cols}
+    FROM {scan}
+    WHERE {where}
+    LIMIT {int(page_size)} OFFSET {int(offset)}
+"""
+df = con.execute(q, params).fetchdf()
 
 st.write(f"符合條件：{total:,} 筆；第 {page} / {total_pages} 頁")
 
@@ -192,26 +179,13 @@ link_col  = find_col(df, {"url", "link", "api_link", "href"})
 image_col = IMAGE_COL_OVERRIDE if IMAGE_COL_OVERRIDE and IMAGE_COL_OVERRIDE in df.columns else \
     find_col(df, {"imageurl","image_url","imageurl_s","thumb","thumbnail","img","image"})
 
-# 使用 data_editor：讓 link 可點、image 顯示縮圖
 col_cfg = {}
 if link_col:
-    col_cfg[link_col] = st.column_config.LinkColumn(
-        label=link_col,
-        display_text="開啟連結"
-    )
+    col_cfg[link_col] = st.column_config.LinkColumn(label=link_col, display_text="開啟連結")
 if image_col:
-    col_cfg[image_col] = st.column_config.ImageColumn(
-        label=image_col,
-        help="縮圖預覽"
-    )
+    col_cfg[image_col] = st.column_config.ImageColumn(label=image_col, help="縮圖預覽")
 
-st.data_editor(
-    df,
-    column_config=col_cfg,
-    use_container_width=True,
-    hide_index=True,
-    disabled=True  # 僅瀏覽，不允許編輯
-)
+st.data_editor(df, column_config=col_cfg, use_container_width=True, hide_index=True, disabled=True)
 
 # 下載區
 c1, c2 = st.columns(2)
@@ -222,14 +196,9 @@ with c2:
     st.caption("下載完整篩選 CSV")
     if st.button("產生完整 CSV"):
         out = "/tmp/filtered.csv"
-        con.execute(
-            f"COPY (SELECT {select_cols} FROM {scan} WHERE {where}) TO '{out}' (HEADER, DELIMITER ',')",
-            params
-        )
+        con.execute(f"COPY (SELECT {select_cols} FROM {scan} WHERE {where}) TO '{out}' (HEADER, DELIMITER ',')", params)
         with open(out, "rb") as f:
             st.download_button("下載完整結果", f, "filtered.csv", "text/csv")
 
-
-# 來源資訊放在最下方
 st.divider()
 st.caption(source_hint)
