@@ -1,1 +1,5 @@
-streamlit
+
+streamlit>=1.37
+duckdb>=1.0.0
+pandas>=2.2
+pyarrow>=16.0
