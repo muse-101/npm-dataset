@@ -332,23 +332,25 @@ with tab_sankey:
                         label=labels,
                         pad=20,
                         thickness=18,
-                        color="#FAFBFD",
-                        line=dict(color="#CBD5E1", width=1)
+                        color="#FFFFFF",
+                        line=dict(color="rgba(0,0,0,0)", width=0)
                     ),
                     link=dict(
                         source=links_df["source_id"],
                         target=links_df["target_id"],
                         value=links_df["value"],
-                        color="rgba(90,123,216,0.35)"
+                        color="rgba(90,123,216,0.18)"
                     ),
+                    textfont=dict(color="#0B1220", size=16, family="Microsoft JhengHei, Heiti TC, sans-serif")
                 )])
                 fig.update_layout(
                     title_text="Sankey：sk1 → sk2 → sk3",
-                    font_size=12,
-                    font=dict(family="Microsoft JhengHei, Heiti TC, sans-serif", color="#111827"),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    hoverlabel=dict(bgcolor="#FFFFFF", font_size=12, font_family="Microsoft JhengHei, Heiti TC, sans-serif")
+                    font_size=16,
+                    font=dict(family="Microsoft JhengHei, Heiti TC, sans-serif", color="#0B1220"),
+                    paper_bgcolor="#FFFFFF",
+                    plot_bgcolor="#FFFFFF",
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    hoverlabel=dict(bgcolor="#FFFFFF", font_size=14, font_family="Microsoft JhengHei, Heiti TC, sans-serif")
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
