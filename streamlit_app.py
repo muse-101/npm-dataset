@@ -37,7 +37,7 @@ st.markdown(
         color: #111827 !important;
     }
     .stDownloadButton button, .stButton button {
-        background-color: #5A7BD8 !important; /* 改為淺灰藍 */
+        background-color: #5A7BD8 !important; /* 淺灰藍 */
         color: white !important;
         border: none !important;
     }
@@ -54,35 +54,47 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# streamlit_app.py —— 固定讀同層 CSV、無側欄、支援連結與縮圖、下拉分頁
+# ===== 主體：固定讀同層 CSV、無上傳、支援 URL 參數、分頁 + Tabs（表格 / Sankey） =====
 import os
 import math
 import duckdb
 import pandas as pd
-import streamlit as st
 
 st.set_page_config(page_title="CSV 典藏資料瀏覽器", layout="wide")
 st.title("CSV 典藏資料瀏覽器")
+# 第 1 行：資料來源（先留空位，待取得 source_hint 後再填）
+src_ph = st.empty()
 
 # —— 本機快速切換測試檔（僅保留快速連結）——
 TEST_FILES = [
+    "d0.csv",
     "d01銅_s1.csv", "d02玉_s1.csv", "d03瓷_s1.csv", "d04琺_s1.csv", "d05雜_s1.csv",
     "d06文_s1.csv", "d07織_s1.csv", "d08雕_s1.csv", "d09漆_s1.csv", "d10錢_s1.csv",
     "d20畫_s1.csv", "d21書_s1.csv", "d22帖_s1.csv", "d23扇_s1.csv", "d24絲_s1.csv"
 ]
 import urllib.parse as _u
 
-with st.expander("切換測試檔", expanded=True):
-    # 僅顯示可點連結（已 URL encode）
-    links = "　".join(f"[{name}](?csv={_u.quote(name)})" for name in TEST_FILES)
-    st.markdown("快速連結：" + links, unsafe_allow_html=True)
+# —— 左側欄：切換測試檔 ——
+with st.sidebar:
+    st.header("控制面板")
+    st.subheader("切換測試檔")
+
+    def _display_name(filename: str) -> str:
+        fn = filename
+        return fn[:-4] if fn.lower().endswith(".csv") else fn
+
+    sep = " | "
+    links = sep.join(
+        f"[{_display_name(name)}](?csv={_u.quote(name)})" for name in TEST_FILES
+    )
+    st.markdown(links, unsafe_allow_html=True)
+    st.markdown("---")
 
 # === 固定讀同層 CSV ===
-CSV_NAME = "d01銅_s1.csv"
+CSV_NAME = "d0.csv"
 IMAGE_COL_OVERRIDE = "imageUrl_s"
 CSV_PATH = os.path.join(os.path.dirname(__file__), CSV_NAME)
 
-# DuckDB：以 scan 方式讀取，不一次載入全部記憶體
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs;")
 
@@ -123,24 +135,39 @@ if not cols:
     st.error("CSV 沒有欄位。")
     st.stop()
 
-# === 上方控制列：欄位、搜尋、每頁筆數（下拉） ===
-with st.expander("欄位與搜尋", expanded=True):
+# 🔎 驗證必備欄位：sk1、sk2、sk3（即使缺少，也先讓表格可看，再在 Sankey 分頁提示）
+REQUIRED_SK = ["sk1", "sk2", "sk3"]
+missing_sk = [c for c in REQUIRED_SK if c not in cols]
+if missing_sk:
+    st.warning("""本 CSV 缺少必備欄位：""" + ", ".join(missing_sk) + """。
+表格仍可瀏覽，但 Sankey 分頁將無法繪圖；請補上 sk1、sk2、sk3 三欄。""")
+
+# === 側欄：欄位與搜尋 ===
+with st.sidebar:
+    st.subheader("欄位與搜尋")
     show_cols = st.multiselect("顯示欄位", cols, default=cols[: min(10, len(cols))])
     kw_cols   = st.multiselect("關鍵字搜尋欄位", cols, default=show_cols or cols)
-    keyword   = st.text_input("關鍵字（ILIKE 模糊搜尋）", "")
     page_size = st.selectbox("每頁筆數", [25, 50, 100, 200, 500], index=2)
+    st.markdown("---")
+
+# 關鍵字值（在頁面中輸入，但值存在 session_state 以供 SQL 使用）
+kw_value = st.session_state.get("keyword", "")
 
 # WHERE 條件
 where = "TRUE"
 params = {}
-if keyword and kw_cols:
+if kw_value and kw_cols:
     like_parts = [f'CAST("{c}" AS TEXT) ILIKE $kw' for c in kw_cols]
     where = "(" + " OR ".join(like_parts) + ")"
-    params["kw"] = f"%{keyword}%"
+    params["kw"] = f"%{kw_value}%"
 
-# 先算總筆數，再給頁碼下拉
+# 總筆數 / 分頁
 total = con.execute(f"SELECT COUNT(*) FROM {scan} WHERE {where}", params).fetchone()[0]
 total_pages = max(1, math.ceil(total / page_size))
+
+# 原始（未套用關鍵字搜尋）的總筆數 / 頁數（用於顯示括號內的基準值）
+base_total = con.execute(f"SELECT COUNT(*) FROM {scan}").fetchone()[0]
+base_pages = max(1, math.ceil(base_total / page_size))
 
 if "page" not in st.session_state or st.session_state.page < 1 or st.session_state.page > total_pages:
     st.session_state.page = 1
@@ -160,23 +187,24 @@ with b4:
         st.session_state.page = total_pages
 
 page = st.session_state.page
-st.caption(f"第 {page} / {total_pages} 頁")
 
 # 查詢當頁資料
 offset = (page - 1) * page_size
 select_cols = ", ".join([f'"{c}"' for c in (show_cols or cols)])
 
-q = f"""
+q_page = f"""
     SELECT {select_cols}
     FROM {scan}
     WHERE {where}
     LIMIT {int(page_size)} OFFSET {int(offset)}
 """
-df = con.execute(q, params).fetchdf()
+df_page = con.execute(q_page, params).fetchdf()
 
-st.write(f"符合條件：{total:,} 筆；第 {page} / {total_pages} 頁")
 
-# === 自動辨識連結欄／圖片欄 ===
+# 符合條件統計 + 資料來源
+src_ph.caption(source_hint)
+
+# 自動辨識連結欄／圖片欄（用於表格 tab）
 def find_col(df, candidates):
     cands = {c.lower() for c in candidates}
     for c in df.columns:
@@ -184,9 +212,9 @@ def find_col(df, candidates):
             return c
     return None
 
-link_col  = find_col(df, {"url", "link", "api_link", "href"})
-image_col = IMAGE_COL_OVERRIDE if IMAGE_COL_OVERRIDE and IMAGE_COL_OVERRIDE in df.columns else \
-    find_col(df, {"imageurl","image_url","imageurl_s","thumb","thumbnail","img","image"})
+link_col  = find_col(df_page, {"url", "link", "api_link", "href"})
+IMAGE_COL_OVERRIDE = IMAGE_COL_OVERRIDE if (IMAGE_COL_OVERRIDE and IMAGE_COL_OVERRIDE in df_page.columns) else None
+image_col = IMAGE_COL_OVERRIDE or find_col(df_page, {"imageurl","image_url","imageurl_s","thumb","thumbnail","img","image"})
 
 col_cfg = {}
 if link_col:
@@ -194,20 +222,157 @@ if link_col:
 if image_col:
     col_cfg[image_col] = st.column_config.ImageColumn(label=image_col, help="縮圖預覽")
 
-st.data_editor(df, column_config=col_cfg, use_container_width=True, hide_index=True, disabled=True)
+# ================= Tabs：表格 / sk節點 / Sankey（sk1, sk2, sk3） =================
+tab_table, tab_nodes, tab_sankey = st.tabs(["📊 表格", "🔖 sk節點", "🪢 Sankey"]) 
 
-# 下載區
-c1, c2 = st.columns(2)
-with c1:
-    st.caption("下載當頁 CSV")
-    st.download_button("下載當頁", df.to_csv(index=False).encode("utf-8"), "page.csv", "text/csv")
-with c2:
-    st.caption("下載完整篩選 CSV")
+with tab_table:
+    st.subheader("資料表（當頁）")
+    # 將「搜尋 text box」與「符合條件統計」移入表格分頁
+    keyword = st.text_input("關鍵字（ILIKE 模糊搜尋）", value=kw_value, key="keyword")
+    if kw_value and kw_cols:
+        st.write(f"符合條件：{total:,} 筆；第 {page} / {total_pages} 頁  ({base_total:,} 筆；第 1 / {base_pages} 頁)")
+    else:
+        st.write(f"符合條件：{total:,} 筆；第 {page} / {total_pages} 頁")
+    st.data_editor(
+        df_page,
+        column_config=col_cfg,
+        use_container_width=True,
+        hide_index=True,
+        disabled=True,
+    )
+
+with tab_nodes:
+    st.subheader("sk 節點（不套用搜尋 / 不分頁，固定顯示 id, sk1, sk2, sk3）")
+    if missing_sk:
+        st.error("此 CSV 不包含 sk1、sk2、sk3 三欄，無法顯示 sk 節點表。請補齊後再試。")
+    else:
+        # 動態組欄位：id（若存在）+ sk1, sk2, sk3（必須）
+        base_cols = ["sk1", "sk2", "sk3"]
+        cols_exist = [c for c in ["id"] + base_cols if c in cols]
+
+        # 讀取完整資料（忽略 WHERE 與分頁），僅取需要的欄位
+        sel_cols_sql = ", ".join([f'"{c}"' for c in cols_exist])
+        q_nodes = f"SELECT {sel_cols_sql} FROM {scan}"
+        df_nodes_full = con.execute(q_nodes).fetchdf().fillna("（缺值）")
+
+        # 若缺 id 欄，補一個空字串欄位，確保顯示為 id, sk1, sk2, sk3
+        if "id" not in df_nodes_full.columns:
+            df_nodes_full.insert(0, "id", "")
+        # 重新排序欄位
+        df_nodes_full = df_nodes_full[["id", "sk1", "sk2", "sk3"]]
+
+        # 檢視：原始列或唯一組合 + 計數
+        view = st.radio("檢視方式", ["原始列（id, sk1, sk2, sk3）", "唯一組合 + 計數（sk1, sk2, sk3）"], horizontal=True)
+        if view.startswith("唯一"):
+            df_nodes = (df_nodes_full[["sk1","sk2","sk3"]]
+                        .value_counts(["sk1","sk2","sk3"])  # pandas >= 1.4
+                        .rename("count").reset_index()
+                        .sort_values("count", ascending=False))
+        else:
+            df_nodes = df_nodes_full
+
+        st.data_editor(
+            df_nodes,
+            use_container_width=True,
+            hide_index=True,
+            disabled=True,
+        )
+
+        # 匯出
+        cna1, cna2 = st.columns(2)
+        with cna1:
+            st.download_button("下載 sk 節點（當前檢視）", data=df_nodes.to_csv(index=False).encode("utf-8-sig"), file_name="sk_nodes.csv", mime="text/csv")
+        with cna2:
+            st.download_button("下載 sk 原始（id, sk1, sk2, sk3）", data=df_nodes_full.to_csv(index=False).encode("utf-8-sig"), file_name="sk_raw.csv", mime="text/csv")
+
+with tab_sankey:
+    st.subheader("Sankey（固定使用 sk1 → sk2 → sk3；不套用搜尋、不分頁）")
+
+    # 先檢查必備欄位是否齊備
+    if missing_sk:
+        st.error("此 CSV 不包含 sk1、sk2、sk3 三欄，無法繪製 Sankey。請補齊後再試。")
+    else:
+        # 延遲載入 Plotly，若環境未安裝則提示，但不讓整個 App 當掉
+        try:
+            import plotly.graph_objects as go
+        except ModuleNotFoundError:
+            st.error("""找不到 Plotly。請先安裝：`pip install plotly` 或 `pip3 install plotly`。若用 Conda：`conda install -c plotly plotly`。
+（Tabs 已顯示；安裝後重啟即可顯示 Sankey）""")
+        else:
+            # 使用與「sk節點」相同來源（不套用搜尋 / 不分頁）
+            # 只取 sk1, sk2, sk3 來建構 Sankey
+            q_nodes_for_sankey = f"SELECT \"sk1\", \"sk2\", \"sk3\" FROM {scan}"
+            df_nodes_for_sankey = con.execute(q_nodes_for_sankey).fetchdf().fillna("（缺值）")
+            work = df_nodes_for_sankey[["sk1","sk2","sk3"]].copy()
+
+            # 產生相鄰層級的 links（sk1→sk2、sk2→sk3）
+            links = []
+            for a, b in [("sk1", "sk2"), ("sk2", "sk3")]:
+                g = work.groupby([a, b], dropna=False, as_index=False).size()
+                g.rename(columns={"size": "value", a: "src", b: "dst"}, inplace=True)
+                links.append(g)
+            links_df = pd.concat(links, ignore_index=True)
+
+            vmax = int(max(1, int(links_df["value"].max())))
+            min_val = st.slider("過濾：最小權重", 1, vmax, value=1)
+            links_df = links_df[links_df["value"] >= min_val]
+
+            if links_df.empty:
+                st.info("過濾後沒有連線可顯示，請放寬門檻或更換資料條件。")
+            else:
+                labels = pd.unique(pd.concat([work["sk1"], work["sk2"], work["sk3"]], ignore_index=True)).tolist()
+                idx = {lab: i for i, lab in enumerate(labels)}
+                links_df = links_df.assign(
+                    source_id=links_df["src"].map(idx),
+                    target_id=links_df["dst"].map(idx),
+                )
+
+                fig = go.Figure(data=[go.Sankey(
+                    node=dict(
+                        label=labels,
+                        pad=20,
+                        thickness=18,
+                        color="#FAFBFD",
+                        line=dict(color="#CBD5E1", width=1)
+                    ),
+                    link=dict(
+                        source=links_df["source_id"],
+                        target=links_df["target_id"],
+                        value=links_df["value"],
+                        color="rgba(90,123,216,0.35)"
+                    ),
+                )])
+                fig.update_layout(
+                    title_text="Sankey：sk1 → sk2 → sk3",
+                    font_size=12,
+                    font=dict(family="Microsoft JhengHei, Heiti TC, sans-serif", color="#111827"),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    hoverlabel=dict(bgcolor="#FFFFFF", font_size=12, font_family="Microsoft JhengHei, Heiti TC, sans-serif")
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # 匯出 nodes/links
+                nodes_df = pd.DataFrame({"id": range(len(labels)), "label": labels})
+                export_links = links_df[["src", "dst", "value", "source_id", "target_id"]].rename(
+                    columns={"src": "source_label", "dst": "target_label"}
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("下載 nodes.csv", data=nodes_df.to_csv(index=False).encode("utf-8-sig"), file_name="nodes.csv", mime="text/csv")
+                with c2:
+                    st.download_button("下載 links.csv", data=export_links.to_csv(index=False).encode("utf-8-sig"), file_name="links.csv", mime="text/csv")
+
+# —— 側欄：下載區（沿用原本行為）——
+with st.sidebar:
+    st.subheader("下載")
+    st.caption("下載當前頁面或完整篩選結果")
+    st.download_button("下載當頁", df_page.to_csv(index=False).encode("utf-8"), "page.csv", "text/csv")
     if st.button("產生完整 CSV"):
         out = "/tmp/filtered.csv"
-        con.execute(f"COPY (SELECT {select_cols} FROM {scan} WHERE {where}) TO '{out}' (HEADER, DELIMITER ',')", params)
+        con.execute(
+            f"COPY (SELECT {select_cols} FROM {scan} WHERE {where}) TO '{out}' (HEADER, DELIMITER ',')",
+            params
+        )
         with open(out, "rb") as f:
             st.download_button("下載完整結果", f, "filtered.csv", "text/csv")
-
-st.divider()
-st.caption(source_hint)
