@@ -27,6 +27,12 @@ st.markdown(
     .stDownloadButton button, .stButton button { background-color: #5A7BD8 !important; color: #fff !important; border: none !important; }
     .stDownloadButton button:hover, .stButton button:hover { background-color: #7395EB !important; color: #fff !important; }
     .stExpander, .stSelectbox, .stTextInput, .stMultiSelect, .stDataFrame { border-radius: 10px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    /* 讓內層 App 在 iframe 裡撐滿高度，避免內容被壓縮 */
+html, body, .stApp { height: 100vh !important; }
+/* Streamlit 主要容器填滿可視高度（避免主內容被擠成很矮） */
+section.main, .main, .block-container { min-height: 100vh !important; }
+/* 嵌入模式去掉多餘上下內距，避免有效高度被吃掉 */
+.block-container { padding-top: 0.5rem !important; padding-bottom: 0.75rem !important; }
     </style>
     """,
     unsafe_allow_html=True,
