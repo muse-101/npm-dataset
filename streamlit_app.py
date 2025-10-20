@@ -43,7 +43,7 @@ import math
 import duckdb
 import pandas as pd
 from datetime import datetime
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, urlunparse, quote
 
 st.title("CSV 典藏資料瀏覽器")
 src_ph = st.empty()
@@ -53,9 +53,29 @@ CSV_NAME = "d0.csv"
 IMAGE_COL_OVERRIDE = "imageUrl_s"
 CSV_PATH = os.path.join(os.path.dirname(__file__), CSV_NAME)
 DEFAULT_CSV_URL = ""  # 空字串 = 預設走本地 d0.csv
+# ✅ 遠端 CSV 基底（用於 ?csv=僅給檔名時的後援解析），可用環境變數 CSV_BASE_URL 覆蓋
+CSV_BASE_URL = os.environ.get("CSV_BASE_URL", "https://raw.githubusercontent.com/muse-101/npm-dataset/main/")
+REMOTE_CSV_BASES = [CSV_BASE_URL]
 
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs;")
+# 設定 User-Agent，避免部分遠端（含 GitHub Raw/CDN）拒絕空 UA
+try:
+    con.execute("SET http_user_agent='Mozilla/5.0 (Streamlit DuckDB)';")
+except Exception:
+    pass
+# 更穩定的 httpfs 設定（遠端 CSV 讀取優化）
+for _sql in [
+    "SET enable_http_metadata_cache=true;",
+    "SET http_keep_alive=true;",
+    "SET http_max_redirects=10;",
+    "SET http_open_timeout=30;",
+    "SET http_reuse_connections=true;",
+]:
+    try:
+        con.execute(_sql)
+    except Exception:
+        pass
 
 # —— 左側欄：控制面板（快速連結 + URL 載入 + 欄位/搜尋/頁面大小 + 下載）——
 import urllib.parse as _u
@@ -102,6 +122,65 @@ with st.sidebar:
             st.rerun()
 
 # === 解析網址參數（?csv= 可為 本地檔名 或 http/https URL） ===
+RESOLVED_URL = None  # 若實際用到遠端網址，記錄在此供後援載入使用
+
+def _normalize_drive_url(u: str) -> str:
+    """將常見的 Google Drive 分享網址轉為可直接下載的 uc?export=download 形式。"""
+    try:
+        if "drive.google.com" not in u and "docs.google.com" not in u:
+            return u
+        import re
+        m = re.search(r"/file/d/([a-zA-Z0-9_-]+)", u)
+        if m:
+            return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+        m = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", u)
+        if m:
+            return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+        if "/uc?" in u:
+            return u
+    except Exception:
+        pass
+    return u
+
+def _auto_encode_nonascii_url(u: str) -> str:
+    """若 URL path 中含有非 ASCII（例如中文檔名），只編碼 path 部分，避免後端不認得。
+    例如：https://raw.githubusercontent.com/.../d01銅_s1.csv -> path 會被 quote 成 %E9%8A%85
+    """
+    try:
+        if not u or not isinstance(u, str) or not u.lower().startswith(("http://","https://")):
+            return u
+        pr = urlparse(u)
+        # 只 re-encode path；query / fragment 保留（Hugo 端已處理）
+        new_path = quote(pr.path, safe="/.-_~")
+        if new_path == pr.path:
+            return u
+        return urlunparse((pr.scheme, pr.netloc, new_path, pr.params, pr.query, pr.fragment))
+    except Exception:
+        return u
+
+        pr = urlparse(u)
+        # 只 re-encode path；query / fragment 保留（已由 Hugo urlquery 處理）
+        new_path = quote(pr.path, safe="/.-_~")  # 常用安全字保留
+        if new_path == pr.path:
+            return u
+        return urlunparse((pr.scheme, pr.netloc, new_path, pr.params, pr.query, pr.fragment))
+    except Exception:
+        return u
+        # 形式1：/file/d/<id>/view
+        import re
+        m = re.search(r"/file/d/([a-zA-Z0-9_-]+)", u)
+        if m:
+            return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+        # 形式2：open?id=<id>
+        m = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", u)
+        if m:
+            return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+        # 若本來就是 uc? 形式，直接回傳
+        if "/uc?" in u:
+            return u
+    except Exception:
+        pass
+    return u
 try:
     _qp = st.query_params if hasattr(st, "query_params") else st.experimental_get_query_params()
 except Exception:
@@ -112,20 +191,28 @@ if isinstance(_csv_param, list):
 
 if _csv_param:
     if str(_csv_param).lower().startswith(("http://", "https://")):
-        _is_parquet = str(_csv_param).lower().endswith(".parquet")
-        scan = f"parquet_scan('{_csv_param}')" if _is_parquet else f"read_csv_auto('{_csv_param}', SAMPLE_SIZE=200000)"
-        source_hint = f"資料來源（URL）：{_csv_param}"
+        _url = _auto_encode_nonascii_url(_normalize_drive_url(str(_csv_param)))
+        _is_parquet = _url.lower().endswith(".parquet")
+        scan = f"parquet_scan('{_url}')" if _is_parquet else f"read_csv_auto('{_url}', SAMPLE_SIZE=200000)"
+        source_hint = f"資料來源（URL）：{_url}"
+        RESOLVED_URL = _url
     else:
         _alt = os.path.join(os.path.dirname(__file__), _csv_param)
-        if not os.path.exists(_alt):
-            st.error(f"找不到指定的 csv 檔：{_alt}")
-            st.stop()
-        scan = f"read_csv_auto('{_alt}', SAMPLE_SIZE=200000)"
-        source_hint = f"資料來源（同層檔案）：{_alt}"
+        if os.path.exists(_alt):
+            scan = f"read_csv_auto('{_alt}', SAMPLE_SIZE=200000)"
+            source_hint = f"資料來源（同層檔案）：{_alt}"
+        else:
+            # 後援：將 csv 檔名接到遠端基底（例如 GitHub Raw），支援中文檔名
+            enc = _u.quote(_csv_param)
+            fallback_url = REMOTE_CSV_BASES[0].rstrip('/') + '/' + enc
+            scan = f"read_csv_auto('{fallback_url}', SAMPLE_SIZE=200000)"
+            source_hint = f"資料來源（遠端後援）：{fallback_url}"
 else:
     if DEFAULT_CSV_URL:
-        scan = f"read_csv_auto('{DEFAULT_CSV_URL}', SAMPLE_SIZE=200000)"
-        source_hint = f"資料來源（GitHub Raw）：{DEFAULT_CSV_URL}"
+        _url = _auto_encode_nonascii_url(_normalize_drive_url(DEFAULT_CSV_URL))
+        scan = f"read_csv_auto('{_url}', SAMPLE_SIZE=200000)"
+        source_hint = f"資料來源（GitHub Raw）：{_url}"
+        RESOLVED_URL = _url
     else:
         scan = f"read_csv_auto('{CSV_PATH}', SAMPLE_SIZE=200000)"
         source_hint = f"資料來源：{CSV_PATH}"
@@ -152,12 +239,42 @@ DL_STEM = DL_NAME[:-4] if DL_NAME.lower().endswith('.csv') else DL_NAME
 src_ph.caption(source_hint)
 st.success("目前預設載入本地檔案 d0.csv，可用 ?csv= 或側欄貼上 URL 變更來源。")
 
+# === 偵錯區（?debug=1 時顯示解析後參數） ===
+try:
+    _dbg = _qp.get("debug", "")
+    _dbg = _dbg[0] if isinstance(_dbg, list) else _dbg
+    if str(_dbg) in ("1","true","yes"):
+        st.info({
+            "csv_param_raw": _csv_param,
+            "resolved_url": RESOLVED_URL,
+            "source_hint": source_hint,
+        })
+except Exception:
+    pass
+
 # === 預覽欄位（以便生成 UI） ===
 try:
     preview = con.execute(f"SELECT * FROM {scan} LIMIT 1").fetchdf()
 except Exception as e:
-    st.error(f"讀取資料結構失敗：{e}")
-    st.stop()
+    # 後援：對遠端 URL 嘗試用 pandas 載入，再註冊成 DuckDB 臨時 view
+    if RESOLVED_URL:
+        try:
+            if RESOLVED_URL.lower().endswith('.parquet'):
+                _df_all = pd.read_parquet(RESOLVED_URL)
+            else:
+                _df_all = pd.read_csv(RESOLVED_URL)
+            con.register('remote_fallback', _df_all)
+            scan = 'remote_fallback'
+            source_hint = source_hint + "（pandas 後援載入）"
+            preview = con.execute(f"SELECT * FROM {scan} LIMIT 1").fetchdf()
+        except Exception as ee:
+            st.error(f"""讀取資料結構失敗：{e}
+遠端後援也失敗：{ee}
+請確認連結是否為可直接下載的原始檔（GitHub Raw / Drive uc?export=download）。""")
+            st.stop()
+    else:
+        st.error(f"讀取資料結構失敗：{e}")
+        st.stop()
 
 cols = preview.columns.tolist()
 if not cols:
