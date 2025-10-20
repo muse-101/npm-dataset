@@ -9,96 +9,92 @@
 
 # === 護眼灰藍主題（柔和灰底＋淺灰藍主色） ===
 import streamlit as st
+st.set_page_config(page_title="CSV 典藏資料瀏覽器", layout="wide")
 st.markdown(
     """
     <style>
-    body, .stApp {
-        background-color: #F4F5F7 !important;
-        color: #111827 !important;
-    }
+    body, .stApp { background-color: #F4F5F7 !important; color: #111827 !important; }
     div[data-testid="stDataFrame"] div[role="gridcell"] {
-        background-color: #FAFBFD !important;
-        color: #111827 !important;
-        padding-top: 0.75rem !important;
-        padding-bottom: 0.75rem !important;
+        background-color: #FAFBFD !important; color: #111827 !important;
+        padding-top: 0.75rem !important; padding-bottom: 0.75rem !important;
     }
     div[data-testid="stDataFrame"] div[role="columnheader"] {
-        background-color: #EEF2F7 !important;
-        color: #111827 !important;
-        padding-top: 0.75rem !important;
-        padding-bottom: 0.75rem !important;
+        background-color: #EEF2F7 !important; color: #111827 !important;
+        padding-top: 0.75rem !important; padding-bottom: 0.75rem !important;
     }
-    .stTextInput > div > div > input {
-        background-color: #FFFFFF !important;
-        color: #111827 !important;
-    }
-    .stSelectbox div[data-baseweb="select"] {
-        background-color: #FFFFFF !important;
-        color: #111827 !important;
-    }
-    .stDownloadButton button, .stButton button {
-        background-color: #5A7BD8 !important; /* 淺灰藍 */
-        color: white !important;
-        border: none !important;
-    }
-    .stDownloadButton button:hover, .stButton button:hover {
-        background-color: #7395EB !important; /* hover 更亮 */
-        color: white !important;
-    }
-    .stExpander, .stSelectbox, .stTextInput, .stMultiSelect, .stDataFrame {
-        border-radius: 10px !important;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    }
+    .stTextInput > div > div > input { background-color: #FFFFFF !important; color: #111827 !important; }
+    .stSelectbox div[data-baseweb="select"] { background-color: #FFFFFF !important; color: #111827 !important; }
+    .stDownloadButton button, .stButton button { background-color: #5A7BD8 !important; color: #fff !important; border: none !important; }
+    .stDownloadButton button:hover, .stButton button:hover { background-color: #7395EB !important; color: #fff !important; }
+    .stExpander, .stSelectbox, .stTextInput, .stMultiSelect, .stDataFrame { border-radius: 10px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-# ===== 主體：固定讀同層 CSV、無上傳、支援 URL 參數、分頁 + Tabs（表格 / Sankey） =====
+# ===== 主體 =====
 import os
 import math
 import duckdb
 import pandas as pd
 
-st.set_page_config(page_title="CSV 典藏資料瀏覽器", layout="wide")
 st.title("CSV 典藏資料瀏覽器")
-# 第 1 行：資料來源（先留空位，待取得 source_hint 後再填）
 src_ph = st.empty()
 
-# —— 本機快速切換測試檔（僅保留快速連結）——
-TEST_FILES = [
-    "d0.csv",
-    "d01銅_s1.csv", "d02玉_s1.csv", "d03瓷_s1.csv", "d04琺_s1.csv", "d05雜_s1.csv",
-    "d06文_s1.csv", "d07織_s1.csv", "d08雕_s1.csv", "d09漆_s1.csv", "d10錢_s1.csv",
-    "d20畫_s1.csv", "d21書_s1.csv", "d22帖_s1.csv", "d23扇_s1.csv", "d24絲_s1.csv"
-]
-import urllib.parse as _u
-
-# —— 左側欄：切換測試檔 ——
-with st.sidebar:
-    st.header("控制面板")
-    st.subheader("切換測試檔")
-
-    def _display_name(filename: str) -> str:
-        fn = filename
-        return fn[:-4] if fn.lower().endswith(".csv") else fn
-
-    sep = " | "
-    links = sep.join(
-        f"[{_display_name(name)}](?csv={_u.quote(name)})" for name in TEST_FILES
-    )
-    st.markdown(links, unsafe_allow_html=True)
-    st.markdown("---")
-
-# === 固定讀同層 CSV ===
+# === 固定讀同層 CSV（預設本地 d0.csv；可被 ?csv= 或側欄 URL 覆蓋） ===
 CSV_NAME = "d0.csv"
 IMAGE_COL_OVERRIDE = "imageUrl_s"
 CSV_PATH = os.path.join(os.path.dirname(__file__), CSV_NAME)
+DEFAULT_CSV_URL = ""  # 空字串 = 預設走本地 d0.csv
 
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs;")
 
-# — URL 參數：?csv= 支援同層檔名或 http(s) 直連 —
+# —— 左側欄：控制面板（快速連結 + URL 載入 + 欄位/搜尋/頁面大小 + 下載）——
+import urllib.parse as _u
+with st.sidebar:
+    st.header("控制面板")
+
+    # 本機快速切換：測試檔連結（可自行增修）
+    TEST_FILES = [
+        "d0.csv",
+        "d01銅_s1.csv", "d02玉_s1.csv", "d03瓷_s1.csv", "d04琺_s1.csv", "d05雜_s1.csv",
+        "d06文_s1.csv", "d07織_s1.csv", "d08雕_s1.csv", "d09漆_s1.csv", "d10錢_s1.csv",
+        "d20畫_s1.csv", "d21書_s1.csv", "d22帖_s1.csv", "d23扇_s1.csv", "d24絲_s1.csv"
+    ]
+    def _display_name(fn: str) -> str: return fn[:-4] if fn.lower().endswith(".csv") else fn
+    links = " | ".join([f"[{_display_name(n)}](?csv={_u.quote(n)})" for n in TEST_FILES])
+    st.subheader("切換測試檔")
+    st.markdown(links, unsafe_allow_html=True)
+    st.markdown("---")
+
+    # 直接貼 URL 載入（GitHub Raw / Google Drive uc?export=download / 任意 http/https）
+    st.subheader("貼上 URL 載入")
+    csv_url = st.text_input(
+        "遠端資料網址（http/https）",
+        value="",
+        placeholder="例如：https://raw.githubusercontent.com/…/d01銅_s1.csv 或 https://…/file.parquet",
+        key="csv_url_input",
+    )
+    col_u1, col_u2 = st.columns([1,1])
+    with col_u1:
+        if st.button("載入 URL", type="primary"):
+            if csv_url.strip():
+                url = csv_url.strip()
+                try:
+                    st.query_params.update({"csv": url})
+                except Exception:
+                    st.experimental_set_query_params(csv=url)
+                st.rerun()
+    with col_u2:
+        if st.button("清除 URL"):
+            try:
+                st.query_params.clear()
+            except Exception:
+                st.experimental_set_query_params()
+            st.rerun()
+
+# === 解析網址參數（?csv= 可為 本地檔名 或 http/https URL） ===
 try:
     _qp = st.query_params if hasattr(st, "query_params") else st.experimental_get_query_params()
 except Exception:
@@ -120,10 +116,17 @@ if _csv_param:
         scan = f"read_csv_auto('{_alt}', SAMPLE_SIZE=200000)"
         source_hint = f"資料來源（同層檔案）：{_alt}"
 else:
-    scan = f"read_csv_auto('{CSV_PATH}', SAMPLE_SIZE=200000)"
-    source_hint = f"資料來源：{CSV_PATH}"
+    if DEFAULT_CSV_URL:
+        scan = f"read_csv_auto('{DEFAULT_CSV_URL}', SAMPLE_SIZE=200000)"
+        source_hint = f"資料來源（GitHub Raw）：{DEFAULT_CSV_URL}"
+    else:
+        scan = f"read_csv_auto('{CSV_PATH}', SAMPLE_SIZE=200000)"
+        source_hint = f"資料來源：{CSV_PATH}"
 
-# 先抓欄位
+src_ph.caption(source_hint)
+st.success("目前預設載入本地檔案 d0.csv，可用 ?csv= 或側欄貼上 URL 變更來源。")
+
+# === 預覽欄位（以便生成 UI） ===
 try:
     preview = con.execute(f"SELECT * FROM {scan} LIMIT 1").fetchdf()
 except Exception as e:
@@ -135,14 +138,14 @@ if not cols:
     st.error("CSV 沒有欄位。")
     st.stop()
 
-# 🔎 驗證必備欄位：sk1、sk2、sk3（即使缺少，也先讓表格可看，再在 Sankey 分頁提示）
+# 🔎 驗證必備欄位：sk1、sk2、sk3（表格仍可瀏覽；Sankey/sk節點缺則提示）
 REQUIRED_SK = ["sk1", "sk2", "sk3"]
 missing_sk = [c for c in REQUIRED_SK if c not in cols]
 if missing_sk:
     st.warning("""本 CSV 缺少必備欄位：""" + ", ".join(missing_sk) + """。
-表格仍可瀏覽，但 Sankey 分頁將無法繪圖；請補上 sk1、sk2、sk3 三欄。""")
+表格仍可瀏覽，但「sk節點」與「Sankey」將無法正確顯示；請補上 sk1、sk2、sk3 三欄。""")
 
-# === 側欄：欄位與搜尋 ===
+# === 側欄：欄位與搜尋 / 每頁筆數 ===
 with st.sidebar:
     st.subheader("欄位與搜尋")
     show_cols = st.multiselect("顯示欄位", cols, default=cols[: min(10, len(cols))])
@@ -150,10 +153,8 @@ with st.sidebar:
     page_size = st.selectbox("每頁筆數", [25, 50, 100, 200, 500], index=2)
     st.markdown("---")
 
-# 關鍵字值（在頁面中輸入，但值存在 session_state 以供 SQL 使用）
+# === 搜尋條件 ===
 kw_value = st.session_state.get("keyword", "")
-
-# WHERE 條件
 where = "TRUE"
 params = {}
 if kw_value and kw_cols:
@@ -161,51 +162,48 @@ if kw_value and kw_cols:
     where = "(" + " OR ".join(like_parts) + ")"
     params["kw"] = f"%{kw_value}%"
 
-# 總筆數 / 分頁
-total = con.execute(f"SELECT COUNT(*) FROM {scan} WHERE {where}", params).fetchone()[0]
+# === 計數（搜尋後 / 原始基準） ===
+try:
+    total = con.execute(f"SELECT COUNT(*) FROM {scan} WHERE {where}", params).fetchone()[0]
+    base_total = con.execute(f"SELECT COUNT(*) FROM {scan}").fetchone()[0]
+except Exception as e:
+    st.error(f"計數失敗：{e}")
+    st.stop()
+
 total_pages = max(1, math.ceil(total / page_size))
+base_pages  = max(1, math.ceil(base_total / page_size))
 
-# 原始（未套用關鍵字搜尋）的總筆數 / 頁數（用於顯示括號內的基準值）
-base_total = con.execute(f"SELECT COUNT(*) FROM {scan}").fetchone()[0]
-base_pages = max(1, math.ceil(base_total / page_size))
-
+# === 分頁控制 ===
 if "page" not in st.session_state or st.session_state.page < 1 or st.session_state.page > total_pages:
     st.session_state.page = 1
-
 b1, b2, b3, b4 = st.columns(4)
 with b1:
-    if st.button("⏮ 第一頁"):
-        st.session_state.page = 1
+    if st.button("⏮ 第一頁"): st.session_state.page = 1
 with b2:
-    if st.button("◀ 上一頁") and st.session_state.page > 1:
-        st.session_state.page -= 1
+    if st.button("◀ 上一頁") and st.session_state.page > 1: st.session_state.page -= 1
 with b3:
-    if st.button("下一頁 ▶") and st.session_state.page < total_pages:
-        st.session_state.page += 1
+    if st.button("下一頁 ▶") and st.session_state.page < total_pages: st.session_state.page += 1
 with b4:
-    if st.button("最後一頁 ⏭"):
-        st.session_state.page = total_pages
-
+    if st.button("最後一頁 ⏭"): st.session_state.page = total_pages
 page = st.session_state.page
 
-# 查詢當頁資料
+# === 查詢當頁 ===
 offset = (page - 1) * page_size
-select_cols = ", ".join([f'"{c}"' for c in (show_cols or cols)])
-
+select_cols_sql = ", ".join([f'"{c}"' for c in (show_cols or cols)])
 q_page = f"""
-    SELECT {select_cols}
+    SELECT {select_cols_sql}
     FROM {scan}
     WHERE {where}
     LIMIT {int(page_size)} OFFSET {int(offset)}
 """
-df_page = con.execute(q_page, params).fetchdf()
+try:
+    df_page = con.execute(q_page, params).fetchdf()
+except Exception as e:
+    st.error(f"讀取頁面資料失敗：{e}")
+    st.stop()
 
-
-# 符合條件統計 + 資料來源
-src_ph.caption(source_hint)
-
-# 自動辨識連結欄／圖片欄（用於表格 tab）
-def find_col(df, candidates):
+# === 自動辨識連結欄／圖片欄（表格用） ===
+def find_col(df: pd.DataFrame, candidates):
     cands = {c.lower() for c in candidates}
     for c in df.columns:
         if c.lower() in cands:
@@ -213,72 +211,55 @@ def find_col(df, candidates):
     return None
 
 link_col  = find_col(df_page, {"url", "link", "api_link", "href"})
-IMAGE_COL_OVERRIDE = IMAGE_COL_OVERRIDE if (IMAGE_COL_OVERRIDE and IMAGE_COL_OVERRIDE in df_page.columns) else None
-image_col = IMAGE_COL_OVERRIDE or find_col(df_page, {"imageurl","image_url","imageurl_s","thumb","thumbnail","img","image"})
-
+image_override = IMAGE_COL_OVERRIDE if (IMAGE_COL_OVERRIDE and IMAGE_COL_OVERRIDE in df_page.columns) else None
+image_col = image_override or find_col(df_page, {"imageurl","image_url","imageurl_s","thumb","thumbnail","img","image"})
 col_cfg = {}
 if link_col:
     col_cfg[link_col] = st.column_config.LinkColumn(label=link_col, display_text="開啟連結")
 if image_col:
     col_cfg[image_col] = st.column_config.ImageColumn(label=image_col, help="縮圖預覽")
 
-# ================= Tabs：表格 / sk節點 / Sankey（sk1, sk2, sk3） =================
+# ================= Tabs：表格 / sk節點 / Sankey =================
 tab_table, tab_nodes, tab_sankey = st.tabs(["📊 表格", "🔖 sk節點", "🪢 Sankey"]) 
 
 with tab_table:
     st.subheader("資料表（當頁）")
-    # 將「搜尋 text box」與「符合條件統計」移入表格分頁
+    # 把搜尋輸入與統計移到表格分頁
     keyword = st.text_input("關鍵字（ILIKE 模糊搜尋）", value=kw_value, key="keyword")
     if kw_value and kw_cols:
         st.write(f"符合條件：{total:,} 筆；第 {page} / {total_pages} 頁  ({base_total:,} 筆；第 1 / {base_pages} 頁)")
     else:
         st.write(f"符合條件：{total:,} 筆；第 {page} / {total_pages} 頁")
-    st.data_editor(
-        df_page,
-        column_config=col_cfg,
-        use_container_width=True,
-        hide_index=True,
-        disabled=True,
-    )
+    st.data_editor(df_page, column_config=col_cfg, use_container_width=True, hide_index=True, disabled=True)
 
 with tab_nodes:
     st.subheader("sk 節點（不套用搜尋 / 不分頁，固定顯示 id, sk1, sk2, sk3）")
     if missing_sk:
         st.error("此 CSV 不包含 sk1、sk2、sk3 三欄，無法顯示 sk 節點表。請補齊後再試。")
     else:
-        # 動態組欄位：id（若存在）+ sk1, sk2, sk3（必須）
+        # 讀取完整資料（忽略 WHERE 與分頁），僅取需要的欄位
         base_cols = ["sk1", "sk2", "sk3"]
         cols_exist = [c for c in ["id"] + base_cols if c in cols]
-
-        # 讀取完整資料（忽略 WHERE 與分頁），僅取需要的欄位
-        sel_cols_sql = ", ".join([f'"{c}"' for c in cols_exist])
-        q_nodes = f"SELECT {sel_cols_sql} FROM {scan}"
+        sel_cols_nodes = ", ".join([f'"{c}"' for c in cols_exist])
+        q_nodes = f"SELECT {sel_cols_nodes} FROM {scan}"
         df_nodes_full = con.execute(q_nodes).fetchdf().fillna("（缺值）")
-
-        # 若缺 id 欄，補一個空字串欄位，確保顯示為 id, sk1, sk2, sk3
         if "id" not in df_nodes_full.columns:
             df_nodes_full.insert(0, "id", "")
-        # 重新排序欄位
         df_nodes_full = df_nodes_full[["id", "sk1", "sk2", "sk3"]]
 
-        # 檢視：原始列或唯一組合 + 計數
         view = st.radio("檢視方式", ["原始列（id, sk1, sk2, sk3）", "唯一組合 + 計數（sk1, sk2, sk3）"], horizontal=True)
         if view.startswith("唯一"):
-            df_nodes = (df_nodes_full[["sk1","sk2","sk3"]]
-                        .value_counts(["sk1","sk2","sk3"])  # pandas >= 1.4
-                        .rename("count").reset_index()
-                        .sort_values("count", ascending=False))
+            df_nodes = (
+                df_nodes_full[["sk1","sk2","sk3"]]
+                .value_counts(["sk1","sk2","sk3"])  # pandas >= 1.4
+                .rename("count").reset_index()
+                .sort_values("count", ascending=False)
+            )
         else:
             df_nodes = df_nodes_full
 
-        st.data_editor(
-            df_nodes,
-            use_container_width=True,
-            hide_index=True,
-            disabled=True,
-        )
+        st.data_editor(df_nodes, use_container_width=True, hide_index=True, disabled=True)
 
-        # 匯出
         cna1, cna2 = st.columns(2)
         with cna1:
             st.download_button("下載 sk 節點（當前檢視）", data=df_nodes.to_csv(index=False).encode("utf-8-sig"), file_name="sk_nodes.csv", mime="text/csv")
@@ -287,29 +268,25 @@ with tab_nodes:
 
 with tab_sankey:
     st.subheader("Sankey（固定使用 sk1 → sk2 → sk3；不套用搜尋、不分頁）")
-
-    # 先檢查必備欄位是否齊備
     if missing_sk:
         st.error("此 CSV 不包含 sk1、sk2、sk3 三欄，無法繪製 Sankey。請補齊後再試。")
     else:
-        # 延遲載入 Plotly，若環境未安裝則提示，但不讓整個 App 當掉
         try:
             import plotly.graph_objects as go
         except ModuleNotFoundError:
             st.error("""找不到 Plotly。請先安裝：`pip install plotly` 或 `pip3 install plotly`。若用 Conda：`conda install -c plotly plotly`。
 （Tabs 已顯示；安裝後重啟即可顯示 Sankey）""")
         else:
-            # 使用與「sk節點」相同來源（不套用搜尋 / 不分頁）
-            # 只取 sk1, sk2, sk3 來建構 Sankey
+            # 取與「sk節點」一致的資料來源（完整、不分頁、不搜尋）
             q_nodes_for_sankey = f"SELECT \"sk1\", \"sk2\", \"sk3\" FROM {scan}"
             df_nodes_for_sankey = con.execute(q_nodes_for_sankey).fetchdf().fillna("（缺值）")
             work = df_nodes_for_sankey[["sk1","sk2","sk3"]].copy()
 
-            # 產生相鄰層級的 links（sk1→sk2、sk2→sk3）
+            # 建立 links（sk1→sk2、sk2→sk3）
             links = []
-            for a, b in [("sk1", "sk2"), ("sk2", "sk3")]:
-                g = work.groupby([a, b], dropna=False, as_index=False).size()
-                g.rename(columns={"size": "value", a: "src", b: "dst"}, inplace=True)
+            for a, b in [("sk1","sk2"),("sk2","sk3")]:
+                g = work.groupby([a,b], dropna=False, as_index=False).size()
+                g.rename(columns={"size":"value", a:"src", b:"dst"}, inplace=True)
                 links.append(g)
             links_df = pd.concat(links, ignore_index=True)
 
@@ -333,15 +310,15 @@ with tab_sankey:
                         pad=20,
                         thickness=18,
                         color="#FFFFFF",
-                        line=dict(color="rgba(0,0,0,0)", width=0)
+                        line=dict(color="rgba(0,0,0,0)", width=0),
                     ),
                     link=dict(
                         source=links_df["source_id"],
                         target=links_df["target_id"],
                         value=links_df["value"],
-                        color="rgba(90,123,216,0.18)"
+                        color="rgba(90,123,216,0.18)",
                     ),
-                    textfont=dict(color="#0B1220", size=16, family="Microsoft JhengHei, Heiti TC, sans-serif")
+                    textfont=dict(color="#0B1220", size=16, family="Microsoft JhengHei, Heiti TC, sans-serif"),
                 )])
                 fig.update_layout(
                     title_text="Sankey：sk1 → sk2 → sk3",
@@ -350,22 +327,11 @@ with tab_sankey:
                     paper_bgcolor="#FFFFFF",
                     plot_bgcolor="#FFFFFF",
                     margin=dict(l=10, r=10, t=40, b=10),
-                    hoverlabel=dict(bgcolor="#FFFFFF", font_size=14, font_family="Microsoft JhengHei, Heiti TC, sans-serif")
+                    hoverlabel=dict(bgcolor="#FFFFFF", font_size=14, font_family="Microsoft JhengHei, Heiti TC, sans-serif"),
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-                # 匯出 nodes/links
-                nodes_df = pd.DataFrame({"id": range(len(labels)), "label": labels})
-                export_links = links_df[["src", "dst", "value", "source_id", "target_id"]].rename(
-                    columns={"src": "source_label", "dst": "target_label"}
-                )
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.download_button("下載 nodes.csv", data=nodes_df.to_csv(index=False).encode("utf-8-sig"), file_name="nodes.csv", mime="text/csv")
-                with c2:
-                    st.download_button("下載 links.csv", data=export_links.to_csv(index=False).encode("utf-8-sig"), file_name="links.csv", mime="text/csv")
-
-# —— 側欄：下載區（沿用原本行為）——
+# —— 側欄：下載區 ——
 with st.sidebar:
     st.subheader("下載")
     st.caption("下載當前頁面或完整篩選結果")
@@ -373,8 +339,8 @@ with st.sidebar:
     if st.button("產生完整 CSV"):
         out = "/tmp/filtered.csv"
         con.execute(
-            f"COPY (SELECT {select_cols} FROM {scan} WHERE {where}) TO '{out}' (HEADER, DELIMITER ',')",
-            params
+            f"COPY (SELECT {select_cols_sql} FROM {scan} WHERE {where}) TO '{out}' (HEADER, DELIMITER ',')",
+            params,
         )
         with open(out, "rb") as f:
             st.download_button("下載完整結果", f, "filtered.csv", "text/csv")
