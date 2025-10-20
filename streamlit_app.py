@@ -370,3 +370,35 @@ with st.sidebar:
         )
         with open(out, "rb") as f:
             st.download_button("下載完整結果", f, DL_NAME, "text/csv")
+
+# ===（進階）Hugo 自適應高度：從 App 回傳內容高度給父頁 ===
+# 說明：Firefox 在 iframe 內對 vh 計算較嚴格，建議改成 parent <-> iframe 的 postMessage 通訊
+# 用法：
+#  1) 本段會定期把 document 高度回傳給 parent；
+#  2) 請在 Hugo shortcode 加上 window.addEventListener('message', ...) 接收並設定對應 iframe 的 style.height。
+try:
+    from streamlit.components.v1 import html as _html
+    _is_embed = str((_qp.get("embed") if not isinstance(_qp.get("embed"), list) else _qp.get("embed")[0]) or "").lower() == "true"
+    if _is_embed:
+        _html(
+            """
+            <script>
+            (function(){
+              function sendSize(){
+                var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+                try{ parent.postMessage({ kind: 'sl-size', height: h }, '*'); }catch(e){}
+              }
+              var ro = new ResizeObserver(function(){ sendSize(); });
+              ro.observe(document.documentElement);
+              window.addEventListener('load', sendSize);
+              setInterval(sendSize, 800);
+              // 初次觸發
+              sendSize();
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
+except Exception:
+    pass
