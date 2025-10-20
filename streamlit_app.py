@@ -1,10 +1,11 @@
 # -------------------------------------------------------------
 # 💡 嵌入 Hugo Page 說明
-# 可直接用 iframe 嵌入不同 CSV，例如：
-# <iframe src="https://npm-dataset.streamlit.app/?embed=true&csv=d01銅_s1.csv" width="100%" height="900" style="border:0;" loading="lazy"></iframe>
+# ✅ 實測在部分主題／瀏覽器下，使用 Streamlit Cloud 的「/~/+/」路徑嵌入更穩：
+# <iframe src="https://muz-dataset.streamlit.app/~/+/?embed=true&csv=d01銅_s1.csv" width="100%" height="900" style="border:0;" loading="lazy"></iframe>
 # 若要簡化，可在 Hugo 新增 shortcode：layouts/shortcodes/streamlit.html
-# 內容：<iframe src="https://npm-dataset.streamlit.app/?embed=true&csv={{ .Get \"csv\" | urlquery }}" width="100%" height="900" style="border:0;" loading="lazy"></iframe>
+# 內容：<iframe src="https://muz-dataset.streamlit.app/~/+/?embed=true&csv={{ .Get \"csv\" | urlquery }}" width="100%" height="900" style="border:0;" loading="lazy"></iframe>
 # 使用：{{< streamlit csv="d02玉_s1.csv" >}}
+# 備註：也可用舊路徑（無 /~/+/），但若遇到 404 或高度問題，建議改用 /~/+/ 版本。
 # -------------------------------------------------------------
 
 # === 護眼灰藍主題（柔和灰底＋淺灰藍主色） ===
@@ -143,15 +144,17 @@ def _normalize_drive_url(u: str) -> str:
     return u
 
 def _auto_encode_nonascii_url(u: str) -> str:
-    """若 URL path 中含有非 ASCII（例如中文檔名），只編碼 path 部分，避免後端不認得。
-    例如：https://raw.githubusercontent.com/.../d01銅_s1.csv -> path 會被 quote 成 %E9%8A%85
+    """將 URL 的 path 做「先解碼再編碼」，避免中文路徑在不同來源下出現雙重編碼。
+    例：/.../d02玉_s1.csv  -> quote 成 /.../d02%E7%8E%89_s1.csv
+       /.../d02%E7%8E%89_s1.csv -> 先 unquote 回 Unicode，再 quote，一樣得到正確的 %E7%8E%89，不會變成 %25E7%258E%2589。
+    只處理 path；query/fragment 保留原狀（Hugo 端已處理）。
     """
     try:
         if not u or not isinstance(u, str) or not u.lower().startswith(("http://","https://")):
             return u
         pr = urlparse(u)
-        # 只 re-encode path；query / fragment 保留（Hugo 端已處理）
-        new_path = quote(pr.path, safe="/.-_~")
+        path_decoded = unquote(pr.path)
+        new_path = quote(path_decoded, safe="/.-_~")
         if new_path == pr.path:
             return u
         return urlunparse((pr.scheme, pr.netloc, new_path, pr.params, pr.query, pr.fragment))
