@@ -37,6 +37,8 @@ import os
 import math
 import duckdb
 import pandas as pd
+from datetime import datetime
+from urllib.parse import urlparse, unquote
 
 st.title("CSV 典藏資料瀏覽器")
 src_ph = st.empty()
@@ -122,6 +124,25 @@ else:
     else:
         scan = f"read_csv_auto('{CSV_PATH}', SAMPLE_SIZE=200000)"
         source_hint = f"資料來源：{CSV_PATH}"
+
+# === 下載檔名：muz01_XXXX_OOOO.csv ===
+# XXXX = 原始資料檔名（無副檔名），OOOO = 目前時間戳（YYYYMMDD_HHMMSS）
+
+def _infer_src_basename(src: str) -> str:
+    try:
+        if str(src).lower().startswith(("http://","https://")):
+            last = os.path.basename(urlparse(src).path)
+            return os.path.splitext(unquote(last))[0] or "data"
+        else:
+            return os.path.splitext(os.path.basename(src))[0]
+    except Exception:
+        return "data"
+
+_src_for_name = _csv_param or (DEFAULT_CSV_URL if DEFAULT_CSV_URL else CSV_PATH)
+SRC_BASENAME = _infer_src_basename(_src_for_name)
+TS = datetime.now().strftime("%Y%m%d_%H%M%S")
+DL_NAME = f"muz01_{SRC_BASENAME}_{TS}.csv"
+DL_STEM = DL_NAME[:-4] if DL_NAME.lower().endswith('.csv') else DL_NAME
 
 src_ph.caption(source_hint)
 st.success("目前預設載入本地檔案 d0.csv，可用 ?csv= 或側欄貼上 URL 變更來源。")
@@ -262,9 +283,9 @@ with tab_nodes:
 
         cna1, cna2 = st.columns(2)
         with cna1:
-            st.download_button("下載 sk 節點（當前檢視）", data=df_nodes.to_csv(index=False).encode("utf-8-sig"), file_name="sk_nodes.csv", mime="text/csv")
+            st.download_button("下載 sk 節點（當前檢視）", data=df_nodes.to_csv(index=False).encode("utf-8-sig"), file_name=DL_STEM + "_nodes.csv", mime="text/csv")
         with cna2:
-            st.download_button("下載 sk 原始（id, sk1, sk2, sk3）", data=df_nodes_full.to_csv(index=False).encode("utf-8-sig"), file_name="sk_raw.csv", mime="text/csv")
+            st.download_button("下載 sk 原始（id, sk1, sk2, sk3）", data=df_nodes_full.to_csv(index=False).encode("utf-8-sig"), file_name=DL_STEM + "_raw.csv", mime="text/csv")
 
 with tab_sankey:
     st.subheader("Sankey（固定使用 sk1 → sk2 → sk3；不套用搜尋、不分頁）")
@@ -335,7 +356,7 @@ with tab_sankey:
 with st.sidebar:
     st.subheader("下載")
     st.caption("下載當前頁面或完整篩選結果")
-    st.download_button("下載當頁", df_page.to_csv(index=False).encode("utf-8"), "page.csv", "text/csv")
+    st.download_button("下載當頁", df_page.to_csv(index=False).encode("utf-8"), DL_NAME, "text/csv")
     if st.button("產生完整 CSV"):
         out = "/tmp/filtered.csv"
         con.execute(
@@ -343,4 +364,4 @@ with st.sidebar:
             params,
         )
         with open(out, "rb") as f:
-            st.download_button("下載完整結果", f, "filtered.csv", "text/csv")
+            st.download_button("下載完整結果", f, DL_NAME, "text/csv")
