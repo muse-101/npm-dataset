@@ -4,3 +4,5 @@
 ```bash
 pip install -r requirements.txt
 streamlit run streamlit_app.py
+
+![keepalive](https://github.com/muse-101/npm-dataset/actions/workflows/keepalive.yml/badge.svg)
