@@ -1,0 +1,17 @@
+name: keep-streamlit-awake
+on:
+  schedule:
+    - cron: "*/20 * * * *"   # 每 20 分鐘（UTC）
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit app
+        run: curl -fsS https://muz-dataset.streamlit.app/ >/dev/null || true
+
+      - name: Mark last run time (UTC & Taipei)
+        run: |
+          echo "### Keepalive ping" >> $GITHUB_STEP_SUMMARY
+          echo "Last run (UTC): $(date -u +"%Y-%m-%d %H:%M:%SZ")" >> $GITHUB_STEP_SUMMARY
+          TZ=Asia/Taipei date +"Last run (Taipei): %Y-%m-%d %H:%M:%S %Z" >> $GITHUB_STEP_SUMMARY
