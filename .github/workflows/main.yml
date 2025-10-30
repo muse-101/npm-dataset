@@ -1,60 +1,50 @@
-name: Keepalive app1 (3 times/day)
+name: Keepalive app1 (3 times/day, 15 CSVs)
 
 on:
   schedule:
     # 台北 06:12 -> UTC 22:12（前一日）
-    - cron: "12 22 * * *"
+    - cron: '12 22 * * *'
     # 台北 14:18 -> UTC 06:18
-    - cron: "18 6 * * *"
+    - cron: '18 6 * * *'
     # 台北 22:24 -> UTC 14:24
-    - cron: "24 14 * * *"
+    - cron: '24 14 * * *'
   workflow_dispatch:
 
 jobs:
   hit_app1_once:
     runs-on: ubuntu-latest
-    env:
-      APP_ROOT: "https://muz-dataset.streamlit.app"
-      # 你的 15 個 CSV 名稱（不含 .csv 副檔名的也可以，但這裡含 .csv 直覺些）
-      CSV_NAMES: >-
-        d01銅_s1.csv
-        d02玉_s1.csv
-        d03瓷_s1.csv
-        d04琺_s1.csv
-        d05雜_s1.csv
-        d06文_s1.csv
-        d07織_s1.csv
-        d08雕_s1.csv
-        d09漆_s1.csv
-        d10錢_s1.csv
-        d20畫_s1.csv
-        d21書_s1.csv
-        d22帖_s1.csv
-        d23扇_s1.csv
-        d24絲_s1.csv
     steps:
-      - name: Randomly pick one CSV and GET once
+      - name: Curl one random CSV (pre-encoded filenames)
+        shell: bash
         run: |
-          # 轉成陣列
-          read -ra CSVs <<< "$CSV_NAMES"
-          # 隨機挑一個
-          CSV_RAW=${CSVs[$RANDOM % ${#CSVs[@]}]}
+          APP_ROOT='https://muz-dataset.streamlit.app'
 
-          # URL encode（因為有中文檔名），用 Python 可靠轉碼
-          CSV_ENC=$(python3 - <<'PY'
-import sys, urllib.parse, os
-name = os.environ.get("CSV_RAW","")
-print(urllib.parse.quote(name))
-PY
-)
+          # 已 URL 編碼的檔名（確保中文正確）
+          FILES=(
+            'd01%E9%8A%85_s1.csv'  # d01銅_s1.csv
+            'd02%E7%8E%89_s1.csv'  # d02玉_s1.csv
+            'd03%E7%93%B7_s1.csv'  # d03瓷_s1.csv
+            'd04%E7%90%BA_s1.csv'  # d04琺_s1.csv
+            'd05%E9%9B%9C_s1.csv'  # d05雜_s1.csv
+            'd06%E6%96%87_s1.csv'  # d06文_s1.csv
+            'd07%E7%B9%94_s1.csv'  # d07織_s1.csv
+            'd08%E9%9B%95_s1.csv'  # d08雕_s1.csv
+            'd09%E6%BC%86_s1.csv'  # d09漆_s1.csv
+            'd10%E9%8C%A2_s1.csv'  # d10錢_s1.csv
+            'd20%E7%95%AB_s1.csv'  # d20畫_s1.csv
+            'd21%E6%9B%B8_s1.csv'  # d21書_s1.csv
+            'd22%E5%B8%96_s1.csv'  # d22帖_s1.csv
+            'd23%E6%89%87_s1.csv'  # d23扇_s1.csv
+            'd24%E7%B5%B2_s1.csv'  # d24絲_s1.csv
+          )
 
+          FN="${FILES[$RANDOM % ${#FILES[@]}]}"
           TS=$(date +%s)
-          # 依你的 app 的讀取端點：/~/+/?csv=<檔名>
-          URL="${APP_ROOT}/~/+/?csv=${CSV_ENC}&keepalive=1&ts=${TS}"
+          URL="${APP_ROOT}/~/+/?csv=${FN}&keepalive=1&ts=${TS}"
 
           echo "[INFO] GET $URL"
           curl -i -L -s -S -m 25 --retry 2 \
-            -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36" \
-            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+            -H 'User-Agent: Mozilla/5.0' \
+            -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
             "$URL" -o /tmp/resp.txt || true
           head -n 1 /tmp/resp.txt || true
